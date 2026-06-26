@@ -1,0 +1,1598 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Globo 3D - Explorador de Biomas</title>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/three@r128"></script>
+  <script src="https://unpkg.com/globe.gl"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css">
+  <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body { 
+      margin: 0; 
+      padding: 0; 
+      font-family: 'Poppins', sans-serif; 
+      overflow: hidden; 
+      color: #e2e8f0;
+      min-height: 100vh;
+      position: relative;
+      background: radial-gradient(circle at top left, rgba(74, 222, 128, 0.16), transparent 22%),
+                  radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.18), transparent 18%),
+                  linear-gradient(180deg, #020712 0%, #070e1d 100%);
+    }
+
+    body::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background-image: radial-gradient(circle, rgba(255,255,255,0.14) 1px, transparent 1px);
+      background-size: 70px 70px;
+      opacity: 0.12;
+      mix-blend-mode: screen;
+      z-index: -1;
+    }
+
+    #globo-espaco { 
+      position: absolute; 
+      top: 0; 
+      left: 0; 
+      width: 100vw; 
+      height: 100vh; 
+      filter: drop-shadow(0 0 40px rgba(74, 222, 128, 0.25));
+    }
+
+    .caixa-vidro {
+      background: rgba(8, 12, 23, 0.84);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 24px;
+      padding: 26px;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+      transition: transform 0.35s ease, border-color 0.35s ease, background 0.35s ease;
+    }
+
+    .caixa-vidro:hover {
+      transform: translateY(-2px);
+    }
+
+    /* Canvas de efeitos visuais */
+    #canvas-efeitos {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 50;
+    }
+
+
+    /* Painéis de Texto */
+    #instrucoes {
+      position: absolute;
+      top: 28px;
+      left: 28px;
+      max-width: 340px;
+      z-index: 10;
+      padding: 24px 26px;
+      border-left: 4px solid rgba(74, 222, 128, 0.9);
+      background: linear-gradient(135deg, rgba(10, 15, 32, 0.96), rgba(15, 20, 38, 0.88));
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+    }
+    #instrucoes h1 { margin-top: 0; font-size: 26px; color: #b9ffb4; letter-spacing: 0.4px; text-shadow: 0 0 16px rgba(74, 222, 128, 0.35); }
+    #instrucoes p { font-size: 14px; color: #d2e8f5; line-height: 1.72; margin: 0 0 10px; }
+
+    #painel-informacoes {
+      position: absolute;
+      top: 28px;
+      right: 28px;
+      width: 420px;
+      max-height: 86vh;
+      overflow-y: auto;
+      display: none; 
+      z-index: 10;
+      animation: slideInPanel 0.45s ease-out;
+      padding: 26px 24px 22px;
+    }
+    
+    #painel-informacoes::-webkit-scrollbar { width: 7px; }
+    #painel-informacoes::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 12px; }
+
+    @keyframes aparecer {
+      from { opacity: 0; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes slideInPanel {
+      from { opacity: 0; transform: translateX(30px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    
+    #painel-informacoes h2 { 
+      margin-top: 0; 
+      color: #7ef6a5; 
+      border-bottom: 1px solid rgba(255,255,255,0.12); 
+      padding-bottom: 12px;
+      font-size: 24px;
+      letter-spacing: 0.35px;
+    }
+
+    #imagem-capa {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+      border-radius: 18px;
+      margin-bottom: 18px;
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: 0 18px 50px rgba(0,0,0,0.28);
+      transition: transform 0.35s ease, box-shadow 0.35s ease;
+    }
+
+    #imagem-capa:hover {
+      transform: translateY(-3px) scale(1.01);
+    }
+
+    #clima-icones {
+      font-size: 16px;
+      margin-bottom: 18px;
+      background: rgba(74, 222, 128, 0.12);
+      color: #d6f9d5;
+      padding: 8px 18px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid rgba(74, 222, 128, 0.22);
+      box-shadow: inset 0 0 18px rgba(74, 222, 128, 0.08);
+    }
+
+    .titulo-topico { font-weight: 700; margin-top: 20px; color: #f2faf5; font-size: 14px; text-transform: uppercase; letter-spacing: 0.8px; }
+    .texto-simples { margin: 10px 0 0 0; font-size: 14px; color: #cbd5e1; line-height: 1.75; font-weight: 300; }
+    
+    .caixa-curiosidade {
+      background: rgba(74, 222, 128, 0.08);
+      border-left: 4px solid rgba(74, 222, 128, 0.95);
+      padding: 14px 16px;
+      border-radius: 16px;
+      margin-top: 18px;
+      font-size: 13px;
+      color: #ecffdf;
+      box-shadow: inset 0 0 30px rgba(74, 222, 128, 0.08);
+    }
+
+    /* Galeria de Animais e Plantas */
+    .galeria-animais,
+    .galeria-plantas {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .galeria-animais div,
+    .galeria-plantas div {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 700;
+      width: 100%;
+      background: rgba(255,255,255,0.03);
+      padding: 12px 8px 10px;
+      border-radius: 16px;
+      transition: transform 0.25s ease, background 0.25s ease;
+    }
+    .galeria-animais img,
+    .galeria-plantas img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: 0 18px 45px rgba(0,0,0,0.18);
+      transition: transform 0.3s ease, filter 0.3s ease;
+    }
+    .galeria-animais div:hover,
+    .galeria-plantas div:hover {
+      transform: translateY(-3px);
+      background: rgba(74,222,128,0.08);
+    }
+    .galeria-animais img:hover,
+    .galeria-plantas img:hover {
+      transform: translateY(-4px) scale(1.02);
+      filter: brightness(1.06);
+    }
+
+    /* Botões */
+    .btn { border: none; border-radius: 14px; cursor: pointer; font-weight: 700; font-family: 'Poppins', sans-serif; transition: all 0.25s ease; box-shadow: 0 14px 30px rgba(0,0,0,0.18); }
+    .btn-fechar { background: rgba(255, 75, 75, 0.18); color: #ff7b7b; border: 1px solid rgba(255, 75, 75, 0.35); width: 38px; height: 38px; display: inline-flex; justify-content: center; align-items: center; border-radius: 50%; font-size: 20px; }
+    .btn-fechar:hover { background: #ff4d4d; color: #fff; transform: scale(1.05); }
+    .btn-360 { background: linear-gradient(135deg, #22c55e, #10b981); color: #fff; width: 100%; margin-top: 24px; padding: 16px; font-size: 16px; display: block; box-shadow: 0 20px 48px rgba(16,185,129,0.28); }
+    .btn-360:hover { transform: translateY(-2px) scale(1.01); box-shadow: 0 24px 56px rgba(16,185,129,0.35); }
+
+    /* Tela Visão 360 */
+    #tela-360 { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 100; display: none; background: radial-gradient(circle at center, rgba(17, 24, 39, 0.96), #02050c 85%); animation: aparecer360 0.45s ease-in; }
+    @keyframes aparecer360 { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+    #panorama-container { width: 100%; height: 100%; }
+    #btn-voltar-globo { position: absolute; top: 30px; left: 30px; z-index: 110; background: rgba(4, 7, 19, 0.88); color: white; border: 1px solid rgba(74, 222, 128, 0.3); padding: 12px 25px; font-size: 15px; border-radius: 14px; cursor: pointer; backdrop-filter: blur(12px); box-shadow: 0 18px 32px rgba(0,0,0,0.28); }
+    #btn-voltar-globo:hover { background: rgba(74, 222, 128, 0.16); }
+
+    /* Modal para expandir fotos */
+    #modal-imagem {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.95);
+      z-index: 200;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      animation: aparecer 0.3s ease-out;
+    }
+
+    .modal-conteudo {
+      position: relative;
+      max-width: 92vw;
+      max-height: 92vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 22px;
+      background: rgba(8, 12, 20, 0.96);
+      border-radius: 26px;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .modal-conteudo img {
+      width: auto;
+      height: auto;
+      max-width: 88vw;
+      max-height: 88vh;
+      border-radius: 20px;
+      object-fit: contain;
+    }
+
+    .modal-fechar {
+      position: absolute;
+      top: 24px;
+      right: 24px;
+      background: rgba(255, 60, 60, 0.18);
+      color: #ff5a5a;
+      border: 2px solid rgba(255, 60, 60, 0.35);
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      font-size: 28px;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transition: all 0.25s ease;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.2);
+    }
+
+    .modal-fechar:hover {
+      background: #ff4f4f;
+      color: white;
+      transform: scale(1.05);
+    }
+
+    #imagem-capa {
+      cursor: pointer;
+      transition: transform 0.2s ease;
+    }
+
+    #imagem-capa:hover {
+      transform: scale(1.05);
+    }
+
+    .galeria-animais img {
+      cursor: pointer;
+      transition: transform 0.2s ease;
+    }
+
+    .galeria-animais img:hover,
+    .galeria-plantas img:hover {
+      transform: scale(1.05);
+      cursor: pointer;
+    }
+
+    /* Seção de Dados */
+    .sessao-dados {
+      margin-top: 25px;
+      border-top: 1px solid rgba(255,255,255,0.2);
+      padding-top: 20px;
+    }
+
+    .botao-expandir-graficos {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 22px;
+      padding: 18px 20px;
+      margin-top: 15px;
+      margin-bottom: 25px;
+      background: linear-gradient(135deg, rgba(74, 222, 128, 0.1), rgba(10, 12, 24, 0.94));
+      border: 1px solid rgba(74, 222, 128, 0.28);
+      border-radius: 18px;
+      cursor: pointer;
+      transition: transform 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+      color: #e2e8f0;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.16);
+      backdrop-filter: blur(12px);
+    }
+
+    .botao-expandir-graficos:hover {
+      transform: translateY(-3px);
+      background: linear-gradient(135deg, rgba(74, 222, 128, 0.16), rgba(12, 16, 32, 0.96));
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.22);
+    }
+
+    .botao-expandir-graficos span {
+      color: #90f2b0;
+      font-weight: 700;
+    }
+
+    .botao-expandir-graficos div p {
+      margin: 6px 0 0;
+      color: #cbd5e1;
+      opacity: 0.9;
+      font-size: 13px;
+    }
+
+    /* Gráficos */
+    .graficos-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-top: 15px;
+      margin-bottom: 25px;
+      position: relative;
+      transition: all 0.3s ease;
+    }
+
+    .graficos-container:hover {
+      opacity: 0.9;
+      transform: scale(1.01);
+    }
+
+    .aviso-expandir {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      font-size: 12px;
+      color: #4ade80;
+      opacity: 0.7;
+      background: rgba(74, 222, 128, 0.1);
+      padding: 5px 10px;
+      border-radius: 5px;
+      transition: all 0.3s ease;
+      pointer-events: none;
+    }
+
+    .graficos-container:hover .aviso-expandir {
+      opacity: 1;
+      background: rgba(74, 222, 128, 0.2);
+    }
+
+    .grafico-wrapper {
+      background: linear-gradient(135deg, rgba(30, 30, 60, 0.5), rgba(20, 40, 60, 0.5));
+      border: 1px solid rgba(74, 222, 128, 0.2);
+      border-radius: 12px;
+      padding: 15px;
+      backdrop-filter: blur(5px);
+    }
+
+    .grafico-wrapper canvas {
+      max-height: 180px;
+    }
+
+    /* Modal de Gráficos */
+    #modal-graficos {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.95);
+      z-index: 300;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      animation: aparecer 0.3s ease-out;
+      backdrop-filter: blur(5px);
+    }
+
+    .modal-graficos-conteudo {
+      position: relative;
+      width: 90vw;
+      height: 85vh;
+      background: rgba(8, 12, 20, 0.98);
+      border: 1px solid rgba(74, 222, 128, 0.25);
+      border-left: 4px solid rgba(74, 222, 128, 0.85);
+      border-radius: 24px;
+      padding: 30px;
+      backdrop-filter: blur(14px);
+      display: flex;
+      flex-direction: column;
+      animation: expandirGrafico 0.5s ease-out;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.8);
+    }
+
+    .modal-graficos-conteudo::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%);
+      border-radius: 24px;
+      pointer-events: none;
+    }
+
+    @keyframes expandirGrafico {
+      from {
+        opacity: 0;
+        transform: scale(0.8);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    .graficos-container-expandido {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      flex: 1;
+      margin-top: 15px;
+    }
+
+    .grafico-wrapper-expandido {
+      background: rgba(10, 10, 30, 0.6);
+      border: 1px solid rgba(74, 222, 128, 0.3);
+      border-radius: 15px;
+      padding: 25px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .grafico-wrapper-expandido canvas {
+      max-height: 100%;
+      width: 100%;
+    }
+
+    .cards-dados {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 10px;
+      margin-bottom: 20px;
+    }
+
+    .card-info {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(74, 222, 128, 0.18);
+      border-radius: 16px;
+      padding: 16px;
+      font-size: 13px;
+      backdrop-filter: blur(12px);
+      box-shadow: inset 0 0 18px rgba(74, 222, 128, 0.06);
+    }
+
+    .card-info strong {
+      color: #7ef3aa;
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    .card-info span {
+      color: #cbd5e1;
+      font-weight: 300;
+      line-height: 1.6;
+    }
+
+    /* Timeline */
+    .timeline-container {
+      margin-top: 10px;
+      position: relative;
+      padding-left: 0;
+    }
+
+    .timeline-item {
+      margin-bottom: 8px;
+      padding: 8px 12px 8px 28px;
+      position: relative;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(74, 222, 128, 0.12);
+      border-radius: 10px;
+      box-shadow: inset 0 0 10px rgba(74, 222, 128, 0.04);
+      opacity: 0;
+      transform: translateX(-18px);
+      animation: revealTimeline 0.55s ease-out forwards;
+    }
+
+    .timeline-item:nth-child(1) { animation-delay: 0s; }
+    .timeline-item:nth-child(2) { animation-delay: 0.10s; }
+    .timeline-item:nth-child(3) { animation-delay: 0.20s; }
+    .timeline-item:nth-child(4) { animation-delay: 0.30s; }
+
+    @keyframes revealTimeline {
+      from {
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .timeline-item.hidden {
+      opacity: 0;
+      transform: translateX(-20px);
+      animation: none;
+    }
+
+    .timeline-item:before {
+      content: '';
+      position: absolute;
+      left: 10px;
+      top: 12px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4ade80;
+      box-shadow: 0 0 12px rgba(74, 222, 128, 0.4);
+    }
+
+    .timeline-item strong {
+      color: #4ade80;
+      display: block;
+      font-size: 12px;
+      margin-bottom: 2px;
+      letter-spacing: 0.14px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .timeline-item span {
+      color: #cbd5e1;
+      font-size: 11px;
+      line-height: 1.4;
+      font-weight: 300;
+      display: block;
+      word-break: break-word;
+    }
+
+  </style>
+</head>
+<body>
+
+  <canvas id="canvas-efeitos"></canvas>
+
+
+  <audio id="som-ambiente" loop></audio>
+
+  <div id="instrucoes" class="caixa-vidro">
+    <h1>🌍 Explorador</h1>
+    <p><b>Dica:</b> Ligue o som do seu computador para uma experiência mágica!</p>
+    <p>Clique nos pontos brilhantes para viajar e conhecer as verdadeiras paisagens de cada lugar.</p>
+  </div>
+
+  <div id="globo-espaco"></div>
+
+  <div id="painel-informacoes" class="caixa-vidro">
+    <button class="btn btn-fechar" onclick="fecharCartao()">X</button>
+    <h2 id="nome-bioma">Nome</h2>
+    
+    <img id="imagem-capa" src="" alt="Foto do Bioma" onclick="abrirModal(this.src)">
+
+    <div id="clima-icones">☀️ 🌧️</div>
+
+    <p class="titulo-topico">O que é?</p>
+    <p id="texto-conceito" class="texto-simples">...</p>
+    
+    <div class="caixa-curiosidade">
+      <b>💡 Você sabia?</b> <span id="texto-curiosidade">...</span>
+    </div>
+    
+    <p class="titulo-topico">Quem mora aqui?</p>
+    <div class="galeria-animais" id="galeria-fotos"></div>
+
+    <p class="titulo-topico">Plantas e Árvores</p>
+    <div class="galeria-plantas" id="galeria-plantas"></div>
+
+    <p class="titulo-topico">Paisagens do Bioma</p>
+    <div class="galeria-plantas" id="galeria-paisagens"></div>
+
+
+    <div class="sessao-dados">
+      <p class="titulo-topico">📊 Estatísticas Climáticas</p>
+      <div class="botao-expandir-graficos" onclick="expandirGraficos()" role="button" tabindex="0">
+        <div>
+          <strong>📈 Ver gráficos de clima</strong>
+          <p>Clique para abrir os dados completos de temperatura e umidade.</p>
+        </div>
+        <span>↗ Expandir</span>
+      </div>
+
+      <p class="titulo-topico">📈 Dados Gerais</p>
+      <div class="cards-dados" id="dados-stats"></div>
+
+      <p class="titulo-topico">🌿 Biodiversidade</p>
+      <div class="cards-dados" id="dados-biodiv"></div>
+
+      <p class="titulo-topico">🛡️ Status de Conservação</p>
+      <div class="cards-dados" id="dados-conservacao"></div>
+
+      <p class="titulo-topico">📜 Timeline</p>
+      <div class="timeline-container" id="dados-timeline"></div>
+    </div>
+
+    <button class="btn btn-360" onclick="abrirVisao360()">👀 Visitar em 360º (Bioma Real)</button>
+  </div>
+
+  <div id="tela-360">
+    <button id="btn-voltar-globo" class="btn" onclick="voltarParaGlobo()">⬅ Voltar para a Terra</button>
+    <div id="panorama-container"></div>
+  </div>
+
+  <div id="modal-imagem" onclick="fecharModal(event)">
+    <div class="modal-conteudo">
+      <button class="modal-fechar" onclick="fecharModal(event)">✕</button>
+      <img id="imagem-modal" src="" alt="Imagem expandida">
+    </div>
+  </div>
+
+  <div id="modal-graficos" onclick="fecharGraficos(event)">
+    <div class="modal-graficos-conteudo">
+      <button class="modal-fechar" onclick="fecharGraficos(event)">✕</button>
+      <h3 style="color: #4ade80; margin-top: 0; text-align: center;">📊 Gráficos Climáticos</h3>
+      <div class="graficos-container-expandido">
+        <div class="grafico-wrapper-expandido">
+          <canvas id="grafico-temperatura-expandido"></canvas>
+        </div>
+        <div class="grafico-wrapper-expandido">
+          <canvas id="grafico-umidade-expandido"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // VARIÁVEIS GLOBAIS E CONFIGURAÇÕES INICIAIS
+    // ==========================================
+    let imagemAtual360 = ''; // Armazena a imagem panorâmica do bioma selecionado
+    let visualizador360 = null; // Instância ativa da biblioteca Pannellum
+    let graficoTemp = null; // Instância do gráfico compacto de temperatura
+    let graficoUmid = null; // Instância do gráfico compacto de umidade
+    let graficoTempExpandido = null; // Instância do gráfico expandido de temperatura
+    let graficoUmidExpandido = null; // Instância do gráfico expandido de umidade
+    let biomaAtual = null; // Bioma que está com o painel de detalhes aberto
+    const tocadorAudio = document.getElementById('som-ambiente'); // Tocador de áudio de som de fundo
+
+    // Essa ponte mágica resolve todos os erros de bloqueio que apareceram nas suas fotos!
+    const ponte = 'https://wsrv.nl/?url=commons.wikimedia.org/wiki/Special:FilePath/';
+
+    const lugares = [
+      {
+        id: 'equatorial',
+        lat: -3.46, lng: -62.21, cor: '#4ade80', 
+        nome: 'Bioma Equatorial',
+        fotoCapa: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Ftse4.mm.bing.net%2Fth%2Fid%2FOIP.NaioCAq3KvhTRXy7TKgICgHaE8%3Fr%3D0%26pid%3DApi&sp=1782438641T2f974efcb844778f14795501ccc1dcf54edd73c506df19c8f9d43f22e3bbef20',
+        clima: '☀️ Quente | 🌧️ Muita Chuva',
+        conceito: 'Florestas gigantes e muito úmidas. É a casa da maior variedade de plantas e bichos do mundo.',
+        curiosidade: 'As árvores da Amazônia transpiram tanta água que criam "rios voadores" de nuvens no céu!',
+        // Uma verdadeira floresta em 360 graus:
+        img360: ponte + 'Mossy_forest_%E2%80%93_Panorama_(Greg_Zaal_via_Poly_Haven).jpg&w=3000&output=jpg',
+        som: 'https://actions.google.com/sounds/v1/water/rain_heavy_loud.ogg',
+        efeito: 'efeito-chuva',
+        animais: [
+          { nome: 'Onça', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Ftse4.mm.bing.net%2Fth%2Fid%2FOIP.eT0WCuGFS0SIuKwAmuJKXQHaEo%3Fpid%3DApi&sp=1782432784T08ad6d77430d34b8503654015a06160043110192ddcc35d8819a3fec29f54778' },
+          { nome: 'Arara', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Fimages5.alphacoders.com%2F732%2Fthumb-1920-732717.jpg&sp=1782432854Tccc5c36941bc9b521ca29175b12222d7c0296ab0eab920b5bf52b4fa6c014d24' },
+          { nome: 'Boto', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Ftse1.mm.bing.net%2Fth%2Fid%2FOIP.0bMc5SNSI6KMAhfW7H5_jAHaEl%3Fpid%3DApi&sp=1782432922T28bb9061effcf172d8bab0ae8eaf326fc900a5b9314717c9c7a743c30ad448d2' }
+        ],
+        plantas: [
+          { nome: 'Sumaúma', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Fmeuverdejardim.com.br%2Fwp-content%2Fuploads%2F2023%2F05%2FPlanta-ceiba-pentandra-sumauma-sumaumeira-sumauma-da-varzea-mafumeira-algodoeiro.webp&sp=1782433026T95072bed74ca60814d0e1d25e52edb470feeb9bf3dabaa739f5dea254fc8e288' },
+          { nome: 'Castanheira', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Fi1.wp.com%2Ffiles.agro20.com.br%2Fuploads%2F2020%2F01%2Fcastanheira-2.jpg%3Fresize%3D1024%252C768%26ssl%3D1&sp=1782433140T87347d1e9266de5b00bd0c80d925d04193b81573c8ecdad5fc61d11d0683b67f' },
+          { nome: 'Vitória-régia', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2F3.bp.blogspot.com%2F-iSDKo89pjQY%2FWEg7opmvmeI%2FAAAAAAAAL9k%2FBiMs8EqBwpkw87VdU_vYZ4L6tKvvMzW4wCLcB%2Fs1600%2Fa-yrupc3aa.jpg&sp=1782433179Tedb7ec1a0aca3fa6447e54a64f0b969e30beafee79e5e49295a4508436a3f39a' }
+        ],
+        paisagens: [
+          { nome: 'Rio Amazonas', foto: 'https://images.unsplash.com/photo-1548164806-9709e698bfc8?auto=format&fit=crop&w=600&q=80' },
+          { nome: 'Dossel da Floresta', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Ftse2.mm.bing.net%2Fth%2Fid%2FOIP.0mw1Mff-WIOKcAj-ktW_JQHaDt%3Fpid%3DApi&sp=1782438696T35c682220abadb09c08cab14bcebf22bf1ce210c4badc42a8eb8fcd5d9ddd61e' },
+          { nome: 'Cachoeira Tropical', foto: 'https://images.unsplash.com/photo-1610703624127-34449fde2b86?auto=format&fit=crop&w=600&q=80' }
+        ],
+        stats: { temp: '20-28°C', umidade: '80-90%', precipitacao: '2.300mm/ano' },
+        biodiv: { especies: '390.000+', endemismos: '15%' },
+        conservacao: { areasProtegidas: '50% da Amazônia', ameacadas: '1.300+ espécies' },
+        temperaturaMeses: [26, 27, 27, 26, 25, 24, 24, 25, 26, 27, 27, 26],
+        umidadeMeses: [85, 84, 85, 86, 87, 88, 87, 86, 85, 84, 84, 85],
+        timeline: [
+          { ano: '5 milhões a.C.', evento: 'Formação da Floresta Amazônica' },
+          { ano: '10.000 a.C.', evento: 'Primeiros povos indígenas habitam' },
+          { ano: '1500 d.C.', evento: 'Chegada dos colonizadores europeus' },
+          { ano: 'Hoje', evento: '17% desmatada, mas ainda vital para o planeta' }
+        ]
+      },
+      {
+        id: 'tropical',
+        lat: -23.55, lng: -46.63, cor: '#fb923c',
+        nome: 'Bioma Tropical',
+        fotoCapa: 'https://www.startpage.com/av/proxy-image?piurl=http%3A%2F%2Fd3nehc6yl9qzo4.cloudfront.net%2Fimg%2Foriginal%2F1920x1080px_3.jpg&sp=1782439082T35501a17cd74e8b218b0f2181eae565571e9f0625d5886d092d54d659455aaeb',
+        clima: '🌤️ Sol | 🍃 Estação Seca',
+        conceito: 'Tem o clima dividido: um verão de chuva e um inverno muito seco. A vegetação tem árvores retorcidas.',
+        curiosidade: 'As cascas grossas das árvores do Cerrado funcionam como roupa de proteção contra o fogo natural.',
+        // Um campo aberto real em 360 graus:
+        img360: 'panorama-6NSyiHmmyYEdVMaTYEz8sw-5.jpg',
+        som: 'https://actions.google.com/sounds/v1/insects/crickets_and_insects.ogg',
+        efeito: '', 
+        animais: [
+          { nome: 'Lobo-Guará', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Fimg.ibxk.com.br%2F2020%2F09%2F02%2F02132800762161.jpg&sp=1782433360Tdb61c3e1d6911e8cf65a180e33ee953267c69a84f92aadff8e8b98beb924c1ac' },
+          { nome: 'Tamanduá', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2F1.bp.blogspot.com%2F-T2jYB-j9ikc%2FXeFzNi03BJI%2FAAAAAAAAbIw%2FsrgG2fw90kwr906WFCXnme0DXxhtjNQ6wCPcBGAYYCw%2Fs1600%2Finstitutojurumi--depois-que-nascem-os-filhotes-as%252Bfemeas-os-%252Bcarregam-nas-%252Bcostas-durante-%252Bmeses-do-%252Bprimeiro-ano-de-vida-marcelo-calazans.jpg&sp=1782433401T4452632b6b3dc5a5729906269d00b21df7edcb1e07ef30328a68d83cc022baea' },
+          { nome: 'Ema', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Fblog.pescagerais.com.br%2Fwp-content%2Fuploads%2F2021%2F06%2Fema-greater-rhea.jpg&sp=1782433456T21570e3de0756b5f741f0c8441ed9eb47dc0a1645033677dccf6ecead09829ae' }
+        ],
+        plantas: [
+          { nome: 'Ipê', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Fi.pinimg.com%2Foriginals%2Fd3%2Fe3%2F77%2Fd3e3779f15bc4f4b839997ef2d50c4a4.jpg&sp=1782433488T9f30de3a211e76665df355008a0cec11750ad8fcab3b35ad4b7689a2456ba753' },
+          { nome: 'Barbatimão', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2F2.bp.blogspot.com%2F-kK1XPI1o_rI%2FUQbCpVDflrI%2FAAAAAAAAHVI%2F-ygbSeaBp94%2Fs1600%2Fbarbatimao4a.jpg&sp=1782433515T75c535b4c920a325b72b0c1547c09112f17f5e9f179920a2f95e6cbfa4d40d25' },
+          { nome: 'Copaíba', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Ftse4.mm.bing.net%2Fth%2Fid%2FOIP.4dcOWDNRSWR82u0nieh5HgHaEo%3Fpid%3DApi&sp=1782433585T0f03377959fe9fe2165f6f5d66dd9684e4cdaf89cba2123b81a7be7aa3499d32' }
+        ],
+        paisagens: [
+          { nome: 'Cerrado e Árvores', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Fmedia.istockphoto.com%2Fphotos%2Fhigh-angle-view-of-pedra-furada-hill-in-jalapo-state-park-tocantins-picture-id1151798319%3Fk%3D20%26m%3D1151798319%26s%3D612x612%26w%3D0%26h%3DgEHojT6iz9bG95YYR4tWRLoKkU5RmlPl35C19EZLSL0%3D&sp=1782439082Tac73aea397dc3cc92540af86e943012fc706e83fb501c3c4e60d864fc256af21' },
+          { nome: 'Vida Selvagem', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Ftse2.mm.bing.net%2Fth%2Fid%2FOIP.wmph6t7v0c4nKZVwegRE6QHaE9%3Fpid%3DApi&sp=1782439082T8c54edd96230ea302597ed1caab8499a6d9c0a1a1572d98aaee425e7ee6e243f' },
+          { nome: 'Pôr do Sol no Cerrado', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Ftse2.mm.bing.net%2Fth%2Fid%2FOIP.4eajX0sQERyD4sMfOyBL3wHaEE%3Fpid%3DApi&sp=1782439033Td00b3093f4ba27b5e145c1208dce2e6579837f8a6600d5b677a21ff6b51adad6' }
+        ],
+        stats: { temp: '18-28°C', umidade: '50-70%', precipitacao: '1.500mm/ano' },
+        biodiv: { especies: '12.000+', endemismos: '30%' },
+        conservacao: { areasProtegidas: '8,8% (Brasil)', ameacadas: '400+ espécies' },
+        temperaturaMeses: [28, 28, 27, 25, 22, 20, 20, 22, 25, 27, 28, 28],
+        umidadeMeses: [68, 65, 62, 55, 48, 45, 46, 50, 58, 65, 68, 70],
+        timeline: [
+          { ano: '40 milhões a.C.', evento: 'Formação do Cerrado brasileiro' },
+          { ano: '10.000 a.C.', evento: 'Ocupação por povos indígenas' },
+          { ano: '1822 d.C.', evento: 'Início da colonização intensiva' },
+          { ano: '2024 d.C.', evento: '48% desmatado, restauração em andamento' }
+        ]
+      },
+      {
+        id: 'deserto',
+        lat: 23.80, lng: 11.28, cor: '#f87171',
+        nome: 'Deserto',
+        fotoCapa: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Ftse1.explicit.bing.net%2Fth%2Fid%2FOIP.tWbnTteUzpg2p4ZXne8G2AHaEK%3Fr%3D0%26pid%3DApi&sp=1782438171T6c830fc67548ea76fab58ef59c0566a11850ec74fdcdc117a3492801f610558e',
+        clima: '🔥 Muito Quente | 💧 Seco',
+        conceito: 'Lugares onde quase não existe água. Faz um calor terrível de dia e muito frio durante a noite.',
+        curiosidade: 'A corcova do camelo não guarda água, guarda gordura! Ela serve como bateria de energia.',
+        // O famoso deserto do Atacama em 360 graus:
+        img360: 'panorama-rJFnd0f3ybasRZl784Phng-5.jpg',
+        som: 'https://actions.google.com/sounds/v1/weather/strong_wind.ogg',
+        efeito: 'efeito-calor',
+        animais: [
+          { nome: 'Camelo', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Fimages.pexels.com%2Fphotos%2F998639%2Fpexels-photo-998639.jpeg%3Fcs%3Dsrgb%26dl%3Dpexels-francesco-ungaro-998639.jpg%26fm%3Djpg&sp=1782433620T4a3d6ac85aa2431bd5c7c949fc1732adfa1c15d06c1c54d0affab6e9937e3f38' },
+          { nome: 'Raposa-do-deserto', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Ftse3.mm.bing.net%2Fth%2Fid%2FOIP.YWfqHWkRqMg6VWU6dOOQqQHaEK%3Fpid%3DApi&sp=1782433665T6b19ed0e783fb23664b50c93a5bac5c44100ff6e29aa3cf5e6c8b4f4d4c3950c' },
+          { nome: 'Águia-do-deserto', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Fmedia.istockphoto.com%2Fid%2F1413306503%2Fpt%2Ffoto%2Fman-holding-white-and-beige-falcon-in-the-arab-desert.webp%3Fb%3D1%26s%3D170667a%26w%3D0%26k%3D20%26c%3Dleilv1Q5GNdoK2A4OFubCP1qbDuzGcGXuUfQUhRpijk%3D&sp=1782433705T755c0b417160f7eaba06ec2f79e23776ddf4cc6dc4307771e3835b504563b257' }
+        ],
+        plantas: [
+          { nome: 'Cacto', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Fimages.pexels.com%2Fphotos%2F13011045%2Fpexels-photo-13011045.jpeg%3Fauto%3Dcompress%26cs%3Dtinysrgb%26w%3D1260%26h%3D750%26dpr%3D2&sp=1782433755Tbf9129f56ea1b165c9ea2c8e27001ee72b8b82abd7b25aecda0c2b9f2e305bd1' },
+          { nome: 'Tamarisk', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Fmedia.istockphoto.com%2Fid%2F1349128016%2Fpt%2Ffoto%2Fmany-vivid-pink-flowers-and-small-buds-of-tamarix-tamarisk-or-salt-cedar-tree-in-a-sunny.jpg%3Fs%3D612x612%26w%3D0%26k%3D20%26c%3DHmRLaAEiYOpAWZdaePYPcAQhfdHX439nDpcGf-VzknE%3D&sp=1782434012T5c0b7ec2c1da31cdee7f003630e8ea94e0018dd63ab97d72c522dd9c0a152322' },
+          { nome: 'Acácia', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Fwallpapercave.com%2Fwp%2Fwp11587999.jpg&sp=1782433886Te4fb76cd832b92125c7737bd84cbfda2705cda4b37cbaa49cd09625fdbe37d2a' }
+        ],
+        paisagens: [
+          { nome: 'Dunas do Deserto', foto: 'https://images.unsplash.com/photo-1542401886-65d6c61db217?auto=format&fit=crop&w=600&q=80' },
+          { nome: 'Oásis no Saara', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Fpng.pngtree.com%2Fthumb_back%2Ffw800%2Fbackground%2F20230331%2Fpngtree-desert-hills-landscape-background-image_2127513.jpg&sp=1782438171T111412756ffd4823169b852acc4e9761d4716af5c0ef39cb74865aaada23df71' },
+          { nome: 'Deserto ao Entardecer', foto: 'https://www.startpage.com/av/proxy-image?piurl=https%3A%2F%2Fimg.freepik.com%2Ffotos-gratis%2Fbelas-dunas-de-areia-no-deserto-do-saara_661209-131.jpg%3Fsemt%3Dais_hybrid%26w%3D740%26q%3D80&sp=1782438171T461b06248ffe740db54dd8390f68d6f20afb125f8c1a08a9db6db8b262ecb1da' }
+        ],
+        stats: { temp: '15-45°C', umidade: '10-20%', precipitacao: '200mm/ano' },
+        biodiv: { especies: '2.000+', endemismos: '25%' },
+        conservacao: { areasProtegidas: '12% (Saara)', ameacadas: '150+ espécies' },
+        temperaturaMeses: [22, 25, 32, 40, 43, 42, 40, 38, 35, 28, 24, 21],
+        umidadeMeses: [18, 15, 12, 10, 8, 9, 12, 15, 18, 20, 20, 19],
+        timeline: [
+          { ano: '6.000 a.C.', evento: 'Transição do clima tropical para árido' },
+          { ano: '3.000 a.C.', evento: 'Formação do deserto do Saara' },
+          { ano: '1900 d.C.', evento: 'Primeiros estudos de biodiversidade' },
+          { ano: 'Hoje', evento: 'Ameaçado por mudanças climáticas' }
+        ]
+      }
+    ];
+
+    // ==========================================
+    // INICIALIZAÇÃO DO GLOBO INTERATIVO 3D (Globe.gl)
+    // ==========================================
+    const meuGlobo = Globe()
+      (document.getElementById('globo-espaco'))
+      .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg') // Textura da Terra
+      .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')   // Plano de fundo estrelado
+      .labelsData(lugares)                                                            // Pontos de marcação dos biomas
+      .labelText('nome')
+      .labelSize(1.8)
+      .labelDotRadius(1.2)
+      .labelColor('cor')
+      .labelResolution(2)
+      /**
+       * Evento de clique em um bioma (Label) no globo.
+       * - Foca a câmera no bioma selecionado.
+       * - Carrega as informações textuais, estatísticas e galerias dinâmicas.
+       * - Reproduz o som ambiente e inicia o efeito visual de clima na tela.
+       */
+      .onLabelClick((bioma) => {
+        meuGlobo.controls().autoRotate = false;
+        meuGlobo.pointOfView({ lat: bioma.lat, lng: bioma.lng, altitude: 0.7 }, 1500);
+        
+        biomaAtual = bioma;
+        document.getElementById('nome-bioma').innerText = bioma.nome;
+        document.getElementById('imagem-capa').src = bioma.fotoCapa; 
+        document.getElementById('clima-icones').innerText = bioma.clima;
+        document.getElementById('texto-conceito').innerText = bioma.conceito;
+        document.getElementById('texto-curiosidade').innerText = bioma.curiosidade;
+        imagemAtual360 = bioma.img360;
+
+        let fotosHtml = '';
+        bioma.animais.forEach(bicho => {
+          fotosHtml += `<div><img src="${bicho.foto}" alt="${bicho.nome}" onclick="abrirModal(this.src)"><br>${bicho.nome}</div>`;
+        });
+        document.getElementById('galeria-fotos').innerHTML = fotosHtml;
+
+        let plantasHtml = '';
+        if (bioma.plantas) {
+          bioma.plantas.forEach(planta => {
+            plantasHtml += `<div><img src="${planta.foto}" alt="${planta.nome}" onclick="abrirModal(this.src)"><br>${planta.nome}</div>`;
+          });
+        }
+        document.getElementById('galeria-plantas').innerHTML = plantasHtml;
+
+        // Renderizar Paisagens
+        let paisagensHtml = '';
+        if (bioma.paisagens) {
+          bioma.paisagens.forEach(foto => {
+            paisagensHtml += `<div><img src="${foto.foto}" alt="${foto.nome}" onclick="abrirModal(this.src)"><br>${foto.nome}</div>`;
+          });
+        }
+        document.getElementById('galeria-paisagens').innerHTML = paisagensHtml;
+
+
+        // Renderizar Estatísticas
+        let statsHtml = `
+          <div class="card-info"><strong>🌡️ Temperatura</strong><span>${bioma.stats.temp}</span></div>
+          <div class="card-info"><strong>💧 Umidade</strong><span>${bioma.stats.umidade}</span></div>
+          <div class="card-info"><strong>🌧️ Precipitação</strong><span>${bioma.stats.precipitacao}</span></div>
+        `;
+        document.getElementById('dados-stats').innerHTML = statsHtml;
+
+        // Renderizar Gráficos ao abrir modal
+        // gráficos pequenos foram removidos da visualização principal
+
+        // Renderizar Biodiversidade
+        let biodivHtml = `
+          <div class="card-info"><strong>🛡️ Espécies</strong><span>${bioma.biodiv.especies}</span></div>
+          <div class="card-info"><strong>🌱 Endemismos</strong><span>${bioma.biodiv.endemismos}</span></div>
+        `;
+        document.getElementById('dados-biodiv').innerHTML = biodivHtml;
+
+        // Renderizar Conservação
+        let conservacaoHtml = `
+          <div class="card-info"><strong>🏞️ Áreas Protegidas</strong><span>${bioma.conservacao.areasProtegidas}</span></div>
+          <div class="card-info"><strong>⚠️ Ameaçadas</strong><span>${bioma.conservacao.ameacadas}</span></div>
+        `;
+        document.getElementById('dados-conservacao').innerHTML = conservacaoHtml;
+
+        // Renderizar Timeline
+        let timelineHtml = '';
+        bioma.timeline.forEach(item => {
+          timelineHtml += `<div class="timeline-item hidden"><strong>${item.ano}</strong><span>${item.evento}</span></div>`;
+        });
+        document.getElementById('dados-timeline').innerHTML = timelineHtml;
+
+        // Ativar animação da timeline ao ficar visível
+        setTimeout(() => ativarAnimacaoTimeline(), 100);
+
+        // Disparar efeito visual do bioma
+        dispararEfeitoBioma(bioma.id);
+
+
+
+        tocadorAudio.src = bioma.som;
+        tocadorAudio.volume = 0.4;
+        tocadorAudio.play().catch(e => console.log("O som tocará após você clicar na tela."));
+
+        document.getElementById('painel-informacoes').style.display = 'block';
+      });
+
+    meuGlobo.pointOfView({ lat: 0, lng: -40, altitude: 2.5 });
+    meuGlobo.showAtmosphere(true);
+    meuGlobo.atmosphereColor('lightskyblue');
+    meuGlobo.atmosphereAltitude(0.15);
+    meuGlobo.controls().autoRotate = true;
+    meuGlobo.controls().autoRotateSpeed = 0.5;
+
+    /**
+     * Oculta o painel de detalhes do bioma, afasta a câmera
+     * para a visão inicial do globo, reativa a rotação e pausa o som.
+     */
+    function fecharCartao() {
+      document.getElementById('painel-informacoes').style.display = 'none';
+      meuGlobo.pointOfView({ lat: 0, lng: -40, altitude: 2.5 }, 2000); 
+      meuGlobo.controls().autoRotate = true;
+      tocadorAudio.pause();
+    }
+
+    /**
+     * Abre a modal com os gráficos em tamanho ampliado e
+     * executa a renderização dos mesmos.
+     */
+    function expandirGraficos() {
+      if (!biomaAtual) return;
+      document.getElementById('modal-graficos').style.display = 'flex';
+      setTimeout(() => renderizarGraficosExpandidos(biomaAtual), 100);
+    }
+
+    /**
+     * Fecha o modal de gráficos climatológicos quando o usuário
+     * clica fora ou no botão de fechar.
+     */
+    function fecharGraficos(event) {
+      if (event.target.id === 'modal-graficos' || event.currentTarget.id === 'modal-graficos' || event.target.classList.contains('modal-fechar')) {
+        document.getElementById('modal-graficos').style.display = 'none';
+      }
+    }
+
+    /**
+     * Renderiza os gráficos de temperatura e umidade mensais expandidos usando Chart.js.
+     * Limpa instâncias de gráficos antigos antes de construir novos.
+     */
+    function renderizarGraficosExpandidos(bioma) {
+      const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+      
+      // Destruir gráficos anteriores
+      if (graficoTempExpandido) graficoTempExpandido.destroy();
+      if (graficoUmidExpandido) graficoUmidExpandido.destroy();
+
+      // Gráfico de Temperatura (expandido)
+      const ctxTemp = document.getElementById('grafico-temperatura-expandido').getContext('2d');
+      graficoTempExpandido = new Chart(ctxTemp, {
+        type: 'line',
+        data: {
+          labels: meses,
+          datasets: [{
+            label: 'Temperatura (°C)',
+            data: bioma.temperaturaMeses,
+            borderColor: '#ff6b35',
+            backgroundColor: 'rgba(255, 107, 53, 0.15)',
+            borderWidth: 4,
+            fill: true,
+            tension: 0.4,
+            pointBackgroundColor: '#ff6b35',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 3,
+            pointRadius: 8,
+            pointHoverRadius: 10
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#cbd5e1', font: { family: "'Poppins', sans-serif", size: 14 } } }
+          },
+          scales: {
+            y: { 
+              beginAtZero: true,
+              max: 50,
+              ticks: { color: '#cbd5e1', font: { size: 12 } },
+              grid: { color: 'rgba(255,255,255,0.1)' }
+            },
+            x: { 
+              ticks: { color: '#cbd5e1', font: { size: 12 } },
+              grid: { color: 'rgba(255,255,255,0.1)' }
+            }
+          }
+        }
+      });
+
+      // Gráfico de Umidade (expandido)
+      const ctxUmid = document.getElementById('grafico-umidade-expandido').getContext('2d');
+      graficoUmidExpandido = new Chart(ctxUmid, {
+        type: 'bar',
+        data: {
+          labels: meses,
+          datasets: [{
+            label: 'Umidade (%)',
+            data: bioma.umidadeMeses,
+            backgroundColor: [
+              'rgba(74, 222, 128, 0.8)',
+              'rgba(74, 222, 128, 0.8)',
+              'rgba(74, 222, 128, 0.8)',
+              'rgba(74, 222, 128, 0.7)',
+              'rgba(74, 222, 128, 0.7)',
+              'rgba(74, 222, 128, 0.6)',
+              'rgba(74, 222, 128, 0.6)',
+              'rgba(74, 222, 128, 0.7)',
+              'rgba(74, 222, 128, 0.7)',
+              'rgba(74, 222, 128, 0.8)',
+              'rgba(74, 222, 128, 0.8)',
+              'rgba(74, 222, 128, 0.8)'
+            ],
+            borderColor: '#4ade80',
+            borderWidth: 3,
+            borderRadius: 8
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: 'x',
+          plugins: {
+            legend: { labels: { color: '#cbd5e1', font: { family: "'Poppins', sans-serif", size: 14 } } }
+          },
+          scales: {
+            y: { 
+              beginAtZero: true,
+              max: 100,
+              ticks: { color: '#cbd5e1', font: { size: 12 } },
+              grid: { color: 'rgba(255,255,255,0.1)' }
+            },
+            x: { 
+              ticks: { color: '#cbd5e1', font: { size: 12 } },
+              grid: { color: 'rgba(255,255,255,0.1)' }
+            }
+          }
+        }
+      });
+    }
+
+    /**
+     * (Função Auxiliar) Renderiza gráficos de apoio menores dentro do painel.
+     */
+    function renderizarGraficos(bioma) {
+      const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+      
+      // Destruir gráficos anteriores
+      if (graficoTemp) graficoTemp.destroy();
+      if (graficoUmid) graficoUmid.destroy();
+
+      // Gráfico de Temperatura
+      const ctxTemp = document.getElementById('grafico-temperatura').getContext('2d');
+      graficoTemp = new Chart(ctxTemp, {
+        type: 'line',
+        data: {
+          labels: meses,
+          datasets: [{
+            label: 'Temperatura (°C)',
+            data: bioma.temperaturaMeses,
+            borderColor: '#ff6b35',
+            backgroundColor: 'rgba(255, 107, 53, 0.1)',
+            borderWidth: 3,
+            fill: true,
+            tension: 0.4,
+            pointBackgroundColor: '#ff6b35',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointRadius: 5,
+            pointHoverRadius: 7
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: {
+            legend: { labels: { color: '#cbd5e1', font: { family: "'Poppins', sans-serif" } } }
+          },
+          scales: {
+            y: { 
+              beginAtZero: true,
+              max: 50,
+              ticks: { color: '#cbd5e1' },
+              grid: { color: 'rgba(255,255,255,0.1)' }
+            },
+            x: { 
+              ticks: { color: '#cbd5e1' },
+              grid: { color: 'rgba(255,255,255,0.1)' }
+            }
+          }
+        }
+      });
+
+      // Gráfico de Umidade
+      const ctxUmid = document.getElementById('grafico-umidade').getContext('2d');
+      graficoUmid = new Chart(ctxUmid, {
+        type: 'bar',
+        data: {
+          labels: meses,
+          datasets: [{
+            label: 'Umidade (%)',
+            data: bioma.umidadeMeses,
+            backgroundColor: [
+              'rgba(74, 222, 128, 0.8)',
+              'rgba(74, 222, 128, 0.8)',
+              'rgba(74, 222, 128, 0.8)',
+              'rgba(74, 222, 128, 0.7)',
+              'rgba(74, 222, 128, 0.7)',
+              'rgba(74, 222, 128, 0.6)',
+              'rgba(74, 222, 128, 0.6)',
+              'rgba(74, 222, 128, 0.7)',
+              'rgba(74, 222, 128, 0.7)',
+              'rgba(74, 222, 128, 0.8)',
+              'rgba(74, 222, 128, 0.8)',
+              'rgba(74, 222, 128, 0.8)'
+            ],
+            borderColor: '#4ade80',
+            borderWidth: 2,
+            borderRadius: 5
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          indexAxis: 'x',
+          plugins: {
+            legend: { labels: { color: '#cbd5e1', font: { family: "'Poppins', sans-serif" } } }
+          },
+          scales: {
+            y: { 
+              beginAtZero: true,
+              max: 100,
+              ticks: { color: '#cbd5e1' },
+              grid: { color: 'rgba(255,255,255,0.1)' }
+            },
+            x: { 
+              ticks: { color: '#cbd5e1' },
+              grid: { color: 'rgba(255,255,255,0.1)' }
+            }
+          }
+        }
+      });
+    }
+
+    /**
+     * Carrega e abre o visualizador esférico 360° interativo do bioma atual
+     * utilizando a biblioteca Pannellum.
+     */
+    function abrirVisao360() {
+      document.getElementById('tela-360').style.display = 'block';
+      if(visualizador360 !== null) { visualizador360.destroy(); }
+      
+      visualizador360 = pannellum.viewer('panorama-container', {
+        "type": "equirectangular",
+        "panorama": imagemAtual360,
+        "autoLoad": true,
+        "compass": false,
+        "showControls": true
+      });
+    }
+
+    /**
+     * Fecha a janela imersiva 360° e retorna à tela do globo terrestre.
+     */
+    function voltarParaGlobo() {
+      document.getElementById('tela-360').style.display = 'none';
+    }
+
+    /**
+     * Abre uma modal centralizada para visualização ampliada (zoom) das
+     * fotos de animais, plantas ou paisagens do bioma.
+     */
+    function abrirModal(src) {
+      document.getElementById('modal-imagem').style.display = 'flex';
+      document.getElementById('imagem-modal').src = src;
+    }
+
+    /**
+     * Fecha a modal de ampliação de imagem.
+     */
+    function fecharModal(event) {
+      if (event.target.id === 'modal-imagem' || event.currentTarget.id === 'modal-imagem' || event.target.classList.contains('modal-fechar')) {
+        document.getElementById('modal-imagem').style.display = 'none';
+      }
+    }
+
+    /**
+     * Usa IntersectionObserver para animar os itens da linha do tempo.
+     * Eles revelam-se gradativamente conforme o usuário rola o painel.
+     */
+    function ativarAnimacaoTimeline() {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.remove('hidden');
+          }
+        });
+      }, { threshold: 0.1 });
+
+      document.querySelectorAll('.timeline-item').forEach(item => {
+        observer.observe(item);
+      });
+    }
+    // ==========================================
+    // MOTOR DE EFEITOS VISUAIS (Canvas)
+    // ==========================================
+    const canvasEfeitos = document.getElementById('canvas-efeitos');
+    const ctx = canvasEfeitos.getContext('2d');
+    let efeitoAnimId = null;
+    let efeitoTimeout = null;
+
+    /**
+     * Ajusta as dimensões do Canvas de efeitos climáticos de tela
+     * para bater exatamente com a largura e altura atuais do navegador.
+     */
+    function redimensionarCanvas() {
+      canvasEfeitos.width = window.innerWidth;
+      canvasEfeitos.height = window.innerHeight;
+    }
+    redimensionarCanvas();
+    window.addEventListener('resize', redimensionarCanvas);
+
+    /**
+     * Interrompe o loop de animação ativo no canvas e limpa toda a tela do canvas.
+     */
+    function pararEfeito() {
+      if (efeitoAnimId) cancelAnimationFrame(efeitoAnimId);
+      if (efeitoTimeout) clearTimeout(efeitoTimeout);
+      efeitoAnimId = null;
+      ctx.clearRect(0, 0, canvasEfeitos.width, canvasEfeitos.height);
+    }
+
+    /**
+     * Interrompe qualquer efeito climático rodando e inicia o efeito do bioma clicado:
+     * - equatorial: chuva torrencial e neblina.
+     * - deserto: tempestade rápida de poeira e vento de areia.
+     * - tropical: chuva de folhas.
+     */
+    function dispararEfeitoBioma(id) {
+      pararEfeito();
+      if (id === 'equatorial') efeitoChuva();
+      else if (id === 'deserto') efeitoTempestadeAreia();
+      else if (id === 'tropical') efeitoChuvaFolhas();
+    }
+
+    // ---- EFEITO CHUVA (Equatorial) ----
+    /**
+     * Simula uma Chuva Realista no canvas (Bioma Equatorial).
+     * Desenha 420 gotas caindo diagonalmente com respingos em contato com o chão
+     * e clarões rápidos imitando relâmpagos. Duração limite de 3 segundos.
+     */
+    function efeitoChuva() {
+      const W = canvasEfeitos.width, H = canvasEfeitos.height;
+      const gotas = [];
+      const totalGotas = 420;
+      for (let i = 0; i < totalGotas; i++) {
+        gotas.push({
+          x: Math.random() * W * 1.2 - W * 0.1,
+          y: Math.random() * H * -1,
+          vel: 14 + Math.random() * 12,
+          tam: 1 + Math.random() * 2.5,
+          comp: 18 + Math.random() * 28,
+          opac: 0.15 + Math.random() * 0.45,
+          vento: -1.5 + Math.random() * -2
+        });
+      }
+      // Respingos no chão
+      const respingos = [];
+
+      const inicio = performance.now();
+      const DURACAO = 3000;
+
+      function animar(agora) {
+        const progresso = (agora - inicio) / DURACAO;
+        const fadeOut = progresso > 0.7 ? 1 - ((progresso - 0.7) / 0.3) : 1;
+        if (progresso >= 1) { pararEfeito(); return; }
+
+        ctx.clearRect(0, 0, W, H);
+
+        // Relâmpago sutil no início
+        if (progresso < 0.08 && Math.random() > 0.88) {
+          ctx.fillStyle = `rgba(200, 220, 255, ${0.06 * fadeOut})`;
+          ctx.fillRect(0, 0, W, H);
+        }
+
+        // Névoa de fundo
+        const gradNevoa = ctx.createLinearGradient(0, H * 0.7, 0, H);
+        gradNevoa.addColorStop(0, `rgba(120, 160, 200, 0)`);
+        gradNevoa.addColorStop(1, `rgba(120, 160, 200, ${0.06 * fadeOut})`);
+        ctx.fillStyle = gradNevoa;
+        ctx.fillRect(0, 0, W, H);
+
+        // Desenhar gotas
+        for (const g of gotas) {
+          g.x += g.vento;
+          g.y += g.vel;
+
+          // Respingo ao atingir o chão
+          if (g.y > H) {
+            if (Math.random() > 0.6) {
+              respingos.push({
+                x: g.x, y: H - 2,
+                raio: 1, maxRaio: 4 + Math.random() * 6,
+                opac: 0.4 * fadeOut,
+                vel: 0.5 + Math.random() * 0.8
+              });
+            }
+            g.x = Math.random() * W * 1.2 - W * 0.1;
+            g.y = Math.random() * -100;
+          }
+
+          ctx.beginPath();
+          const grad = ctx.createLinearGradient(g.x, g.y, g.x + g.vento * 0.5, g.y + g.comp);
+          grad.addColorStop(0, `rgba(180, 210, 240, 0)`);
+          grad.addColorStop(0.3, `rgba(180, 210, 240, ${g.opac * fadeOut})`);
+          grad.addColorStop(1, `rgba(200, 225, 255, ${g.opac * 0.3 * fadeOut})`);
+          ctx.strokeStyle = grad;
+          ctx.lineWidth = g.tam;
+          ctx.moveTo(g.x, g.y);
+          ctx.lineTo(g.x + g.vento * 2, g.y + g.comp);
+          ctx.stroke();
+        }
+
+        // Respingos
+        for (let i = respingos.length - 1; i >= 0; i--) {
+          const r = respingos[i];
+          r.raio += r.vel;
+          r.opac *= 0.92;
+          if (r.opac < 0.01 || r.raio > r.maxRaio) { respingos.splice(i, 1); continue; }
+          ctx.beginPath();
+          ctx.ellipse(r.x, r.y, r.raio * 2, r.raio * 0.5, 0, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(180, 215, 255, ${r.opac})`;
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+        }
+
+        efeitoAnimId = requestAnimationFrame(animar);
+      }
+      efeitoAnimId = requestAnimationFrame(animar);
+    }
+
+    // ---- EFEITO TEMPESTADE DE AREIA (Deserto) ----
+    /**
+     * Simula uma Tempestade de Areia no canvas (Bioma Deserto).
+     * Desenha 600 grãos de areia soprados da esquerda para a direita,
+     * com névoa arenosa de fundo e linhas horizontais de rajadas de vento. Duração limite de 3 segundos.
+     */
+    function efeitoTempestadeAreia() {
+      const W = canvasEfeitos.width, H = canvasEfeitos.height;
+      const particulas = [];
+      const totalPart = 600;
+      for (let i = 0; i < totalPart; i++) {
+        particulas.push({
+          x: -Math.random() * W * 0.6,
+          y: Math.random() * H,
+          velX: 8 + Math.random() * 18,
+          velY: -2 + Math.random() * 4,
+          tam: 1 + Math.random() * 4,
+          opac: 0.08 + Math.random() * 0.28,
+          onda: Math.random() * Math.PI * 2,
+          freqOnda: 0.015 + Math.random() * 0.03,
+          ampOnda: 1 + Math.random() * 3,
+          // Tons de areia variados
+          r: 180 + Math.floor(Math.random() * 60),
+          g: 140 + Math.floor(Math.random() * 50),
+          b: 70 + Math.floor(Math.random() * 40)
+        });
+      }
+
+      const inicio = performance.now();
+      const DURACAO = 3000;
+
+      function animar(agora) {
+        const progresso = (agora - inicio) / DURACAO;
+        // Fade in rápido, fade out suave
+        let intensidade = 1;
+        if (progresso < 0.15) intensidade = progresso / 0.15;
+        else if (progresso > 0.65) intensidade = 1 - ((progresso - 0.65) / 0.35);
+        if (progresso >= 1) { pararEfeito(); return; }
+
+        ctx.clearRect(0, 0, W, H);
+
+        // Névoa de areia de fundo (onda que passa)
+        const ondaX = progresso * W * 1.8;
+        const gradAreia = ctx.createRadialGradient(
+          ondaX, H * 0.5, 0,
+          ondaX, H * 0.5, W * 0.7
+        );
+        gradAreia.addColorStop(0, `rgba(210, 170, 90, ${0.12 * intensidade})`);
+        gradAreia.addColorStop(0.5, `rgba(190, 150, 80, ${0.06 * intensidade})`);
+        gradAreia.addColorStop(1, 'rgba(190, 150, 80, 0)');
+        ctx.fillStyle = gradAreia;
+        ctx.fillRect(0, 0, W, H);
+
+        // Partículas de areia
+        for (const p of particulas) {
+          p.onda += p.freqOnda;
+          p.x += p.velX * intensidade;
+          p.y += p.velY + Math.sin(p.onda) * p.ampOnda;
+
+          if (p.x > W + 50) {
+            p.x = -Math.random() * 80;
+            p.y = Math.random() * H;
+          }
+          if (p.y < -10) p.y = H + 10;
+          if (p.y > H + 10) p.y = -10;
+
+          const alpha = p.opac * intensidade;
+          ctx.beginPath();
+          ctx.ellipse(p.x, p.y, p.tam * 1.5, p.tam * 0.7, p.onda * 0.3, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${p.r}, ${p.g}, ${p.b}, ${alpha})`;
+          ctx.fill();
+
+          // Brilho sutil nas partículas maiores
+          if (p.tam > 3) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.tam * 2, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 220, 140, ${alpha * 0.15})`;
+            ctx.fill();
+          }
+        }
+
+        // Rastros horizontais de vento
+        for (let i = 0; i < 5; i++) {
+          const yLinha = H * (0.15 + i * 0.17);
+          const xStart = ondaX - W * 0.5 + i * 60;
+          ctx.beginPath();
+          ctx.moveTo(xStart, yLinha);
+          ctx.lineTo(xStart + 120 + i * 30, yLinha + Math.sin(progresso * 8 + i) * 8);
+          ctx.strokeStyle = `rgba(220, 185, 110, ${0.08 * intensidade})`;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+
+        efeitoAnimId = requestAnimationFrame(animar);
+      }
+      efeitoAnimId = requestAnimationFrame(animar);
+    }
+
+    // ---- EFEITO CHUVA DE FOLHAS (Tropical) ----
+    /**
+     * Simula uma Queda de Folhas no canvas (Bioma Tropical).
+     * Desenha 55 folhas outonais e primaveris em 3 variações de formatos (oval, alongada e maple),
+     * caindo, rotacionando e planando sob oscilações do vento. Duração limite de 3 segundos.
+     */
+    function efeitoChuvaFolhas() {
+      const W = canvasEfeitos.width, H = canvasEfeitos.height;
+      const folhas = [];
+      const totalFolhas = 55;
+      // Cores de folhas variadas
+      const coresFolhas = [
+        [76, 175, 80],    // verde vivo
+        [139, 195, 74],   // verde lima
+        [205, 164, 52],   // dourado
+        [255, 152, 0],    // laranja
+        [183, 28, 28],    // vermelho escuro
+        [46, 125, 50],    // verde escuro
+        [121, 85, 72],    // marrom
+        [56, 142, 60],    // verde médio
+      ];
+
+      for (let i = 0; i < totalFolhas; i++) {
+        const cor = coresFolhas[Math.floor(Math.random() * coresFolhas.length)];
+        folhas.push({
+          x: Math.random() * W * 1.3 - W * 0.15,
+          y: -Math.random() * H * 0.8 - 30,
+          velY: 2.5 + Math.random() * 3.5,
+          velX: -1 + Math.random() * 2,
+          rotacao: Math.random() * Math.PI * 2,
+          velRot: (Math.random() - 0.5) * 0.08,
+          tamanho: 10 + Math.random() * 16,
+          onda: Math.random() * Math.PI * 2,
+          freqOnda: 0.02 + Math.random() * 0.03,
+          ampOnda: 1.5 + Math.random() * 3,
+          r: cor[0], g: cor[1], b: cor[2],
+          opac: 0.5 + Math.random() * 0.5,
+          tipo: Math.floor(Math.random() * 3) // 0: oval, 1: longa, 2: maple
+        });
+      }
+
+      const inicio = performance.now();
+      const DURACAO = 3000;
+
+      function desenharFolha(f, alpha) {
+        ctx.save();
+        ctx.translate(f.x, f.y);
+        ctx.rotate(f.rotacao);
+        ctx.globalAlpha = alpha;
+
+        const s = f.tamanho;
+
+        if (f.tipo === 0) {
+          // Folha oval com nervura
+          ctx.beginPath();
+          ctx.ellipse(0, 0, s * 0.4, s * 0.75, 0, 0, Math.PI * 2);
+          const gradFolha = ctx.createLinearGradient(-s * 0.4, 0, s * 0.4, 0);
+          gradFolha.addColorStop(0, `rgba(${f.r - 20}, ${f.g - 15}, ${f.b}, 1)`);
+          gradFolha.addColorStop(0.5, `rgba(${f.r + 15}, ${f.g + 10}, ${f.b}, 1)`);
+          gradFolha.addColorStop(1, `rgba(${f.r - 10}, ${f.g - 5}, ${f.b}, 1)`);
+          ctx.fillStyle = gradFolha;
+          ctx.fill();
+          // Nervura central
+          ctx.beginPath();
+          ctx.moveTo(0, -s * 0.7);
+          ctx.lineTo(0, s * 0.7);
+          ctx.strokeStyle = `rgba(${f.r - 40}, ${f.g - 30}, ${f.b - 20}, 0.5)`;
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+        } else if (f.tipo === 1) {
+          // Folha longa e fina
+          ctx.beginPath();
+          ctx.moveTo(0, -s * 0.8);
+          ctx.quadraticCurveTo(s * 0.35, 0, 0, s * 0.8);
+          ctx.quadraticCurveTo(-s * 0.35, 0, 0, -s * 0.8);
+          ctx.fillStyle = `rgba(${f.r}, ${f.g}, ${f.b}, 1)`;
+          ctx.fill();
+          // Nervura
+          ctx.beginPath();
+          ctx.moveTo(0, -s * 0.75);
+          ctx.lineTo(0, s * 0.75);
+          ctx.strokeStyle = `rgba(${f.r - 35}, ${f.g - 25}, ${f.b - 15}, 0.45)`;
+          ctx.lineWidth = 0.7;
+          ctx.stroke();
+        } else {
+          // Folha estilo maple (5 pontas)
+          ctx.beginPath();
+          for (let p = 0; p < 5; p++) {
+            const angulo = (p * Math.PI * 2) / 5 - Math.PI / 2;
+            const angMeio = angulo + Math.PI / 5;
+            const px = Math.cos(angulo) * s * 0.6;
+            const py = Math.sin(angulo) * s * 0.6;
+            const mx = Math.cos(angMeio) * s * 0.25;
+            const my = Math.sin(angMeio) * s * 0.25;
+            if (p === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+            ctx.lineTo(mx, my);
+          }
+          ctx.closePath();
+          const gradMaple = ctx.createRadialGradient(0, 0, 0, 0, 0, s * 0.6);
+          gradMaple.addColorStop(0, `rgba(${f.r + 20}, ${f.g + 15}, ${f.b + 10}, 1)`);
+          gradMaple.addColorStop(1, `rgba(${f.r - 15}, ${f.g - 10}, ${f.b}, 1)`);
+          ctx.fillStyle = gradMaple;
+          ctx.fill();
+        }
+
+        // Sombra sutil
+        ctx.shadowColor = 'rgba(0,0,0,0.15)';
+        ctx.shadowBlur = 4;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 3;
+
+        ctx.restore();
+      }
+
+      function animar(agora) {
+        const progresso = (agora - inicio) / DURACAO;
+        let fadeOut = progresso > 0.65 ? 1 - ((progresso - 0.65) / 0.35) : 1;
+        if (progresso >= 1) { pararEfeito(); return; }
+
+        ctx.clearRect(0, 0, W, H);
+
+        for (const f of folhas) {
+          f.onda += f.freqOnda;
+          f.x += f.velX + Math.sin(f.onda) * f.ampOnda;
+          f.y += f.velY;
+          f.rotacao += f.velRot + Math.sin(f.onda * 1.3) * 0.02;
+
+          if (f.y > H + 40) {
+            f.y = -30 - Math.random() * 50;
+            f.x = Math.random() * W * 1.3 - W * 0.15;
+          }
+
+          const alpha = f.opac * fadeOut;
+          desenharFolha(f, alpha);
+        }
+
+        efeitoAnimId = requestAnimationFrame(animar);
+      }
+      efeitoAnimId = requestAnimationFrame(animar);
+    }
+
+  </script>
+</body>
+</html>
